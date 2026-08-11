@@ -81,6 +81,8 @@ func parseNote(filePath string) (Problem, string, error) {
 					p.Streak, _ = strconv.Atoi(value)
 				case "Interval":
 					p.Interval, _ = strconv.Atoi(value)
+				case "Link":
+					p.Link = value
 				}
 			}
 		} else {
