@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -31,6 +32,8 @@ const (
 	stateNewProblem
 	stateReviewForm
 	stateSpecificInput
+	stateDashboardAll
+	stateDashboardDue
 	stateDone
 )
 
@@ -72,6 +75,10 @@ type model struct {
 	// specific-problem lookup
 	specificForm *huh.Form
 	specificNum  string
+
+	// dashboards
+	dashboardTable table.Model
+	dashboardRows  []dashboardRow
 
 	message string
 	err     error
@@ -124,7 +131,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Forward anything else (keys not consumed above, blink ticks, etc.)
-	// to whichever huh.Form is currently active.
+	// to whichever huh.Form (or dashboard table) is currently active.
 	switch m.state {
 	case stateNewProblem:
 		return m.updateNewForm(msg)
@@ -132,6 +139,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateReviewForm(msg)
 	case stateSpecificInput:
 		return m.updateSpecificForm(msg)
+	case stateDashboardAll, stateDashboardDue:
+		return m.updateDashboard(msg)
 	}
 
 	return m, nil
@@ -166,6 +175,12 @@ func (m *model) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.specificNum = ""
 		m.specificForm = specificNumberForm(&m.specificNum)
 		return m, m.specificForm.Init()
+
+	case "4":
+		return m.openDashboard(false, stateDashboardAll)
+
+	case "5":
+		return m.openDashboard(true, stateDashboardDue)
 
 	case "0", "q":
 		return m, tea.Quit
@@ -348,6 +363,12 @@ func (m *model) View() string {
 	case stateSpecificInput:
 		return docStyle.Render(m.specificForm.View())
 
+	case stateDashboardAll:
+		return m.dashboardView("📊 All Problems")
+
+	case stateDashboardDue:
+		return m.dashboardView("⏰ Due Today")
+
 	case stateDone:
 		var b strings.Builder
 		if m.err != nil {
@@ -370,12 +391,14 @@ func (m *model) menuView() string {
 	b.WriteString(menuItemStyle.Render("1. New Problem") + "\n")
 	b.WriteString(menuItemStyle.Render("2. Review Due Problems") + "\n")
 	b.WriteString(menuItemStyle.Render("3. Review Specific Problem (Practice Mode)") + "\n")
+	b.WriteString(menuItemStyle.Render("4. Dashboard — All Problems") + "\n")
+	b.WriteString(menuItemStyle.Render("5. Dashboard — Due Today") + "\n")
 	b.WriteString(menuItemStyle.Render("0. Exit") + "\n\n")
 
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n\n")
 	}
 
-	b.WriteString(helpStyle.Render("Choose an option (1 / 2 / 3 / 0)"))
+	b.WriteString(helpStyle.Render("Choose an option (1 / 2 / 3 / 4 / 5 / 0)"))
 	return docStyle.Render(b.String())
 }
