@@ -156,30 +156,9 @@ func (m *model) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.newForm.Init()
 
 	case "2":
-		files, err := dueFileNames(m.vaultDir)
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		if len(files) == 0 {
-			m.message = "All caught up! No problems due for review today."
-			m.state = stateDone
-			return m, nil
-		}
-		m.dueFiles = files
-		m.reviewIdx = 0
-		return m.startReview()
-
-	case "3":
-		m.state = stateSpecificInput
-		m.specificNum = ""
-		m.specificForm = specificNumberForm(&m.specificNum)
-		return m, m.specificForm.Init()
-
-	case "4":
 		return m.openDashboard(false, stateDashboardAll)
 
-	case "5":
+	case "3":
 		return m.openDashboard(true, stateDashboardDue)
 
 	case "0", "q":
@@ -312,7 +291,7 @@ func (m *model) saveNewProblem() error {
 	fileName := fmt.Sprintf("%s-%s.md", a.Number, slug)
 	filePath := filepath.Join(m.vaultDir, fileName)
 
-	body := fmt.Sprintf("\n# %s\n\n## Description\n\n%s\n\n## Solution", a.Title, a.Desc)
+	body := fmt.Sprintf("\n# %s\n\n## Description\n\n%s\n\n", a.Title, a.Desc)
 
 	if err := saveNote(filePath, p, body); err != nil {
 		return err
@@ -389,16 +368,14 @@ func (m *model) menuView() string {
 	b.WriteString(titleStyle.Render("📘 LeetCode Obsidian CLI") + "\n\n")
 	b.WriteString(dashboardStyle.Render(fmt.Sprintf("%d total problems tracked  |  %d due for review today", m.total, m.due)) + "\n\n")
 	b.WriteString(menuItemStyle.Render("1. New Problem") + "\n")
-	b.WriteString(menuItemStyle.Render("2. Review Due Problems") + "\n")
-	b.WriteString(menuItemStyle.Render("3. Review Specific Problem (Practice Mode)") + "\n")
-	b.WriteString(menuItemStyle.Render("4. Dashboard — All Problems") + "\n")
-	b.WriteString(menuItemStyle.Render("5. Dashboard — Due Today") + "\n")
+	b.WriteString(menuItemStyle.Render("2. Dashboard — All Problems") + "\n")
+	b.WriteString(menuItemStyle.Render("3. Dashboard — Due Today") + "\n")
 	b.WriteString(menuItemStyle.Render("0. Exit") + "\n\n")
 
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n\n")
 	}
 
-	b.WriteString(helpStyle.Render("Choose an option (1 / 2 / 3 / 4 / 5 / 0)"))
+	b.WriteString(helpStyle.Render("Choose an option (1 / 2 / 3 / 0)"))
 	return docStyle.Render(b.String())
 }
