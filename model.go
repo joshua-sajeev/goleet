@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -77,8 +78,12 @@ type model struct {
 	specificNum  string
 
 	// dashboards
-	dashboardTable table.Model
-	dashboardRows  []dashboardRow
+	dashboardTable     table.Model
+	dashboardRows      []dashboardRow
+	dashboardAllRows   []dashboardRow // original unfiltered rows
+	dashboardSearching bool
+	dashboardSearch    textinput.Model
+	dashboardQuery     string
 
 	message string
 	err     error

@@ -225,7 +225,11 @@ func (m *model) openDashboard(dueOnly bool, state sessionState) (tea.Model, tea.
 
 	height := m.height - 10
 	m.dashboardRows = rows
+	m.dashboardAllRows = rows // Store original rows for filtering
 	m.dashboardTable = buildDashboardTable(rows, height)
+	m.dashboardSearching = false
+	m.dashboardQuery = ""
+	m.dashboardSearch = createSearchInput()
 	m.state = state
 	return m, nil
 }
@@ -233,14 +237,41 @@ func (m *model) openDashboard(dueOnly bool, state sessionState) (tea.Model, tea.
 // updateDashboard handles input while a dashboard table is on screen:
 // arrow keys move the cursor (handled by the table itself), enter
 // jumps into a review of the highlighted problem, esc/q returns to
-// the menu.
+// the menu, and normal typing activates search/filter.
 func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
-		case "esc", "q":
+		case "esc":
+			if m.dashboardSearching && m.dashboardQuery == "" {
+				// Exit search mode if empty
+				m.dashboardSearching = false
+				m.dashboardQuery = ""
+				m.dashboardRows = m.dashboardAllRows
+				height := m.height - 10
+				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+				return m, nil
+			}
+			if m.dashboardSearching {
+				// Clear search
+				m.dashboardQuery = ""
+				m.dashboardSearch.SetValue("")
+				m.dashboardRows = m.dashboardAllRows
+				height := m.height - 10
+				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+				return m, nil
+			}
+			// Exit to menu
+			m.state = stateMenu
+			return m, nil
+		case "q":
 			m.state = stateMenu
 			return m, nil
 		case "enter":
+			if m.dashboardSearching {
+				// Exit search mode first, then review
+				m.dashboardSearching = false
+				m.dashboardQuery = ""
+			}
 			idx := m.dashboardTable.Cursor()
 			if idx < 0 || idx >= len(m.dashboardRows) {
 				return m, nil
@@ -248,9 +279,54 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dueFiles = []string{m.dashboardRows[idx].FileName}
 			m.reviewIdx = 0
 			return m.startReview()
+		case "ctrl+u":
+			// Clear search
+			if m.dashboardSearching {
+				m.dashboardQuery = ""
+				m.dashboardSearch.SetValue("")
+				m.dashboardRows = m.dashboardAllRows
+				height := m.height - 10
+				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+				return m, nil
+			}
 		}
 	}
 
+	// If not searching, check if this is a printable character to start search
+	if !m.dashboardSearching {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			s := keyMsg.String()
+			if len(s) == 1 && s[0] >= 32 && s[0] < 127 {
+				// Start search mode
+				m.dashboardSearching = true
+				m.dashboardQuery = ""
+				m.dashboardSearch = createSearchInput()
+				m.dashboardSearch.SetValue(string(s[0]))
+				// Fall through to update search input
+			}
+		}
+	}
+
+	// Handle search input
+	if m.dashboardSearching {
+		var cmd tea.Cmd
+		m.dashboardSearch, cmd = m.dashboardSearch.Update(msg)
+
+		// Update filter results
+		m.dashboardQuery = m.dashboardSearch.Value()
+		results := fuzzySearchProblems(m.vaultDir, m.dashboardQuery, m.dashboardAllRows)
+		filteredRows := make([]dashboardRow, len(results))
+		for i, r := range results {
+			filteredRows[i] = r.Row
+		}
+		m.dashboardRows = filteredRows
+
+		height := m.height - 10
+		m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+		return m, cmd
+	}
+
+	// Normal table navigation
 	var cmd tea.Cmd
 	m.dashboardTable, cmd = m.dashboardTable.Update(msg)
 	return m, cmd
@@ -260,8 +336,24 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 // distinguishes the "all problems" and "due today" screens.
 func (m *model) dashboardView(title string) string {
 	var b strings.Builder
-	b.WriteString(dashHeaderStyle.Render(title) + "\n\n")
+
+	// Add search indicator and results count
+	if m.dashboardSearching {
+		totalCount := len(m.dashboardAllRows)
+		filteredCount := len(m.dashboardRows)
+		b.WriteString(dashHeaderStyle.Render(fmt.Sprintf("%s — Searching (%d/%d)", title, filteredCount, totalCount)) + "\n")
+		b.WriteString(m.dashboardSearch.View() + "\n\n")
+	} else {
+		b.WriteString(dashHeaderStyle.Render(title) + "\n\n")
+	}
+
 	b.WriteString(m.dashboardTable.View() + "\n\n")
-	b.WriteString(helpStyle.Render("↑/↓ move  •  enter review selected  •  esc/q back to menu"))
+
+	// Update help text based on search state
+	if m.dashboardSearching {
+		b.WriteString(helpStyle.Render("type to filter  •  enter review  •  ctrl+u clear  •  esc exit search"))
+	} else {
+		b.WriteString(helpStyle.Render("type to search  •  enter review  •  ↑/↓ move  •  esc/q back"))
+	}
 	return docStyle.Render(b.String())
 }
