@@ -26,6 +26,50 @@ type dashboardRow struct {
 
 var dashHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 
+// paginationInfo holds data about pagination state
+type paginationInfo struct {
+	currentPage  int
+	itemsPerPage int
+	totalItems   int
+	totalPages   int
+}
+
+// calculatePagination computes pagination info from total items
+func calculatePagination(totalItems, itemsPerPage int) paginationInfo {
+	totalPages := (totalItems + itemsPerPage - 1) / itemsPerPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	return paginationInfo{
+		totalItems:   totalItems,
+		itemsPerPage: itemsPerPage,
+		totalPages:   totalPages,
+	}
+}
+
+// getPaginatedRows returns the rows for the current page
+func getPaginatedRows(allRows []dashboardRow, currentPage, itemsPerPage int) []dashboardRow {
+	if len(allRows) == 0 {
+		return allRows
+	}
+
+	start := currentPage * itemsPerPage
+	end := start + itemsPerPage
+
+	if start >= len(allRows) {
+		start = len(allRows) - 1
+	}
+	if end > len(allRows) {
+		end = len(allRows)
+	}
+
+	if start >= end {
+		return []dashboardRow{}
+	}
+
+	return allRows[start:end]
+}
+
 // loadDashboardRows reads every note in the vault and returns them
 // sorted by Next Review date, soonest/most-overdue first. If dueOnly
 // is true, only notes due today or earlier are included.
@@ -223,10 +267,18 @@ func (m *model) openDashboard(dueOnly bool, state sessionState) (tea.Model, tea.
 		return m, nil
 	}
 
-	height := m.height - 10
-	m.dashboardRows = rows
-	m.dashboardAllRows = rows // Store original rows for filtering
-	m.dashboardTable = buildDashboardTable(rows, height)
+	// Reset pagination
+	m.currentPage = 0
+	m.dashboardAllRows = rows
+	paginationInfo := calculatePagination(len(rows), m.itemsPerPage)
+	m.totalPages = paginationInfo.totalPages
+
+	// Get first page of rows
+	paginatedRows := getPaginatedRows(rows, m.currentPage, m.itemsPerPage)
+
+	height := m.height - 12 // Account for search + pagination info
+	m.dashboardRows = paginatedRows
+	m.dashboardTable = buildDashboardTable(paginatedRows, height)
 	m.dashboardSearching = false
 	m.dashboardQuery = ""
 	m.dashboardSearch = createSearchInput()
@@ -237,7 +289,8 @@ func (m *model) openDashboard(dueOnly bool, state sessionState) (tea.Model, tea.
 // updateDashboard handles input while a dashboard table is on screen:
 // arrow keys move the cursor (handled by the table itself), enter
 // jumps into a review of the highlighted problem, esc/q returns to
-// the menu, and normal typing activates search/filter.
+// the menu, normal typing activates search/filter, and Tab/Shift+Tab
+// navigate between pages.
 func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
@@ -246,8 +299,10 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Exit search mode if empty
 				m.dashboardSearching = false
 				m.dashboardQuery = ""
-				m.dashboardRows = m.dashboardAllRows
-				height := m.height - 10
+				m.currentPage = 0
+				paginatedRows := getPaginatedRows(m.dashboardAllRows, m.currentPage, m.itemsPerPage)
+				m.dashboardRows = paginatedRows
+				height := m.height - 12
 				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
 				return m, nil
 			}
@@ -255,8 +310,10 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Clear search
 				m.dashboardQuery = ""
 				m.dashboardSearch.SetValue("")
-				m.dashboardRows = m.dashboardAllRows
-				height := m.height - 10
+				m.currentPage = 0
+				paginatedRows := getPaginatedRows(m.dashboardAllRows, m.currentPage, m.itemsPerPage)
+				m.dashboardRows = paginatedRows
+				height := m.height - 12
 				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
 				return m, nil
 			}
@@ -284,8 +341,30 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.dashboardSearching {
 				m.dashboardQuery = ""
 				m.dashboardSearch.SetValue("")
-				m.dashboardRows = m.dashboardAllRows
-				height := m.height - 10
+				m.currentPage = 0
+				paginatedRows := getPaginatedRows(m.dashboardAllRows, m.currentPage, m.itemsPerPage)
+				m.dashboardRows = paginatedRows
+				height := m.height - 12
+				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+				return m, nil
+			}
+		case "tab":
+			// Next page (only if not searching)
+			if !m.dashboardSearching && m.currentPage < m.totalPages-1 {
+				m.currentPage++
+				paginatedRows := getPaginatedRows(m.dashboardAllRows, m.currentPage, m.itemsPerPage)
+				m.dashboardRows = paginatedRows
+				height := m.height - 12
+				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
+				return m, nil
+			}
+		case "shift+tab":
+			// Previous page (only if not searching)
+			if !m.dashboardSearching && m.currentPage > 0 {
+				m.currentPage--
+				paginatedRows := getPaginatedRows(m.dashboardAllRows, m.currentPage, m.itemsPerPage)
+				m.dashboardRows = paginatedRows
+				height := m.height - 12
 				m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
 				return m, nil
 			}
@@ -319,9 +398,17 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, r := range results {
 			filteredRows[i] = r.Row
 		}
-		m.dashboardRows = filteredRows
 
-		height := m.height - 10
+		// Update pagination for search results
+		paginationInfo := calculatePagination(len(filteredRows), m.itemsPerPage)
+		m.totalPages = paginationInfo.totalPages
+		m.currentPage = 0 // Reset to first page when filtering
+
+		// Get first page of filtered results
+		paginatedRows := getPaginatedRows(filteredRows, m.currentPage, m.itemsPerPage)
+		m.dashboardRows = paginatedRows
+
+		height := m.height - 12
 		m.dashboardTable = buildDashboardTable(m.dashboardRows, height)
 		return m, cmd
 	}
@@ -332,15 +419,18 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// dashboardView renders the table plus a header/help footer. title
-// distinguishes the "all problems" and "due today" screens.
+// dashboardView renders the table plus a header/help footer, pagination info,
+// and search box. title distinguishes the "all problems" and "due today" screens.
 func (m *model) dashboardView(title string) string {
 	var b strings.Builder
 
 	// Add search indicator and results count
 	if m.dashboardSearching {
 		totalCount := len(m.dashboardAllRows)
-		filteredCount := len(m.dashboardRows)
+		filteredCount := len(m.dashboardAllRows)
+		// Count actual filtered results
+		results := fuzzySearchProblems(m.vaultDir, m.dashboardQuery, m.dashboardAllRows)
+		filteredCount = len(results)
 		b.WriteString(dashHeaderStyle.Render(fmt.Sprintf("%s — Searching (%d/%d)", title, filteredCount, totalCount)) + "\n")
 		b.WriteString(m.dashboardSearch.View() + "\n\n")
 	} else {
@@ -348,6 +438,15 @@ func (m *model) dashboardView(title string) string {
 	}
 
 	b.WriteString(m.dashboardTable.View() + "\n\n")
+
+	// Pagination info
+	paginationStr := fmt.Sprintf("Page %d/%d", m.currentPage+1, m.totalPages)
+	if m.dashboardSearching {
+		paginationStr += " (searching: tab/shift+tab disabled)"
+	} else if m.totalPages > 1 {
+		paginationStr += "  •  tab next  •  shift+tab prev"
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(paginationStr) + "\n\n")
 
 	// Update help text based on search state
 	if m.dashboardSearching {

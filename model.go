@@ -85,14 +85,21 @@ type model struct {
 	dashboardSearch    textinput.Model
 	dashboardQuery     string
 
+	// pagination
+	currentPage  int // 0-indexed
+	itemsPerPage int
+	totalPages   int
+
 	message string
 	err     error
 }
 
 func initialModel(vaultDir string) *model {
 	m := &model{
-		vaultDir: vaultDir,
-		state:    stateMenu,
+		vaultDir:     vaultDir,
+		state:        stateMenu,
+		itemsPerPage: 10, // Show 10 items per page
+		currentPage:  0,
 	}
 	m.refreshDashboard()
 	return m
