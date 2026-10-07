@@ -340,7 +340,7 @@ func (m *model) refreshDashboard() {
 func (m *model) View() string {
 	switch m.state {
 	case stateNewProblem:
-		return docStyle.Render(m.newForm.View())
+		return docStyle.Render(m.newForm.View() + "\n" + helpStyle.Render("esc: back to menu  |  ctrl+c: quit"))
 
 	case stateReviewForm:
 		header := fmt.Sprintf(
@@ -352,7 +352,7 @@ func (m *model) View() string {
 		return docStyle.Render(dashboardStyle.Render(header) + m.reviewForm.View())
 
 	case stateSpecificInput:
-		return docStyle.Render(m.specificForm.View())
+		return docStyle.Render(m.specificForm.View() + "\n" + helpStyle.Render("esc: back to menu  |  ctrl+c: quit"))
 
 	case stateDashboardAll:
 		return m.dashboardView("📊 All Problems")

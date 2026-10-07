@@ -4,8 +4,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 )
+
+// formKeyMap returns huh's default keymap with Esc added as an abort key,
+// so pressing Esc cancels the form (huh.StateAborted) and the model's
+// update handlers return the user to the main menu. Ctrl+C is still
+// handled globally by the model and quits the app.
+func formKeyMap() *huh.KeyMap {
+	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(
+		key.WithKeys("esc", "ctrl+c"),
+		key.WithHelp("esc", "back to menu"),
+	)
+	return km
+}
 
 // newProblemAnswers holds the raw string answers collected from the
 // "new problem" form before they're converted into a Problem.
@@ -69,7 +83,7 @@ func newProblemForm(a *newProblemAnswers) *huh.Form {
 				CharLimit(20000).
 				Value(&a.Desc),
 		),
-	).WithTheme(huh.ThemeCharm())
+	).WithTheme(huh.ThemeCharm()).WithKeyMap(formKeyMap())
 }
 
 // reviewForm builds the single-question form shown after attempting a
@@ -87,7 +101,7 @@ func reviewForm(confidence *string) *huh.Form {
 				).
 				Value(confidence),
 		),
-	).WithTheme(huh.ThemeCharm())
+	).WithTheme(huh.ThemeCharm()).WithKeyMap(formKeyMap())
 }
 
 // specificNumberForm builds the single-input form used to look up a
@@ -101,5 +115,5 @@ func specificNumberForm(number *string) *huh.Form {
 				Value(number).
 				Validate(requiredValidator),
 		),
-	).WithTheme(huh.ThemeCharm())
+	).WithTheme(huh.ThemeCharm()).WithKeyMap(formKeyMap())
 }

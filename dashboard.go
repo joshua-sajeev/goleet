@@ -180,6 +180,7 @@ func statusFor(p Problem) string {
 // buildDashboardTable turns rows into a ready-to-render bubbles/table.
 func buildDashboardTable(rows []dashboardRow, height int) table.Model {
 	columns := []table.Column{
+		{Title: "#", Width: 5},
 		{Title: "Title", Width: 30},
 		{Title: "Diff", Width: 7},
 		{Title: "Topics", Width: 24},
@@ -193,6 +194,7 @@ func buildDashboardTable(rows []dashboardRow, height int) table.Model {
 	for _, r := range rows {
 		p := r.Problem
 		trows = append(trows, table.Row{
+			truncate(r.Number, 5),
 			truncate(r.Title, 30),
 			p.Difficulty,
 			truncate(strings.Join(p.Topics, ", "), 24),
@@ -321,8 +323,11 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateMenu
 			return m, nil
 		case "q":
-			m.state = stateMenu
-			return m, nil
+			// While searching, "q" is just a letter (e.g. "queue").
+			if !m.dashboardSearching {
+				m.state = stateMenu
+				return m, nil
+			}
 		case "enter":
 			if m.dashboardSearching {
 				// Exit search mode first, then review
@@ -380,8 +385,9 @@ func (m *model) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dashboardSearching = true
 				m.dashboardQuery = ""
 				m.dashboardSearch = createSearchInput()
-				m.dashboardSearch.SetValue(string(s[0]))
-				// Fall through to update search input
+				// Fall through: the search input below receives this same
+				// key event and inserts the character exactly once. (Don't
+				// pre-fill with SetValue here, or the first char doubles.)
 			}
 		}
 	}
